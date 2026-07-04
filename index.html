@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Painting Studio — Reverse-Engineer a Reference</title>
+<style>
+  :root{--bg:#14121a;--panel:#1e1b26;--panel2:#272231;--ink:#f2eef8;
+    --muted:#a99fc0;--line:#352f42;--accent:#c47bff;--accent2:#7bd8ff;}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:radial-gradient(1200px 800px at 70% -10%, #241d33 0%, var(--bg) 60%);
+    color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1040px;margin:0 auto;padding:22px 18px 60px}
+  header h1{font-size:22px;margin:0 0 2px;letter-spacing:.2px}
+  header p{margin:0 0 18px;color:var(--muted);font-size:13.5px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:16px}
+  #drop{padding:26px;text-align:center;border:2px dashed var(--line);border-radius:16px;cursor:pointer;transition:.15s;background:var(--panel)}
+  #drop.drag{border-color:var(--accent);background:var(--panel2)}
+  #drop b{color:var(--accent)} #drop small{color:var(--muted)}
+  .tabs{display:flex;gap:6px;flex-wrap:wrap;margin:18px 0 12px}
+  .tab{padding:8px 14px;border-radius:999px;border:1px solid var(--line);background:var(--panel);color:var(--muted);cursor:pointer;font-weight:600;font-size:13.5px}
+  .tab.active{background:var(--accent);border-color:var(--accent);color:#1b0f28}
+  .tab:hover:not(.active){color:var(--ink);border-color:var(--accent)}
+  .stage{position:relative;display:flex;justify-content:center;align-items:center;padding:14px;min-height:220px;
+    background:linear-gradient(45deg,#00000022 25%,transparent 25%,transparent 75%,#00000022 75%) 0 0/22px 22px,
+      linear-gradient(45deg,#00000022 25%,transparent 25%,transparent 75%,#00000022 75%) 11px 11px/22px 22px,var(--panel2);border-radius:14px}
+  canvas{max-width:100%;height:auto;border-radius:8px;box-shadow:0 10px 30px #0007;background:#0000}
+  .empty{color:var(--muted);font-size:14px;padding:40px}
+  .controls{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:16px}
+  .slider{flex:1 1 320px;min-width:240px}
+  .slider .row{display:flex;justify-content:space-between;font-size:12.5px;color:var(--muted);margin-bottom:4px}
+  input[type=range]{width:100%;accent-color:var(--accent);height:24px}
+  .hint{font-size:12px;color:var(--muted);margin-top:2px}
+  button.act{padding:10px 16px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);cursor:pointer;font-weight:600}
+  button.act:hover{border-color:var(--accent2);color:var(--accent2)}
+  button.act:disabled{opacity:.4;cursor:not-allowed}
+  .foot{margin-top:14px;color:var(--muted);font-size:12px}
+  .badge{display:inline-block;padding:2px 8px;border:1px solid var(--line);border-radius:999px;font-size:11.5px;color:var(--muted);margin-left:6px}
+  .busy{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:#14121abb;border-radius:14px;font-size:13px;color:var(--accent2)}
+  .busy.on{display:flex}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Painting Studio <span class="badge">reference simplifier</span></h1>
+    <p>Drop in a picture and slide from a loose block-in up to full detail.</p>
+  </header>
+
+  <div id="drop" class="card">
+    <div><b>Click to choose</b> or drag an image here</div>
+    <small>Stays on your device — nothing is uploaded.</small>
+    <input id="file" type="file" accept="image/*" hidden>
+  </div>
+
+  <div class="tabs" id="tabs">
+    <div class="tab" data-tab="normal">Normal</div>
+    <div class="tab active" data-tab="simplified">Simplified</div>
+  </div>
+
+  <div class="stage card">
+    <div id="empty" class="empty">No image yet — add one above to begin.</div>
+    <canvas id="cv" style="display:none"></canvas>
+    <div id="busy" class="busy">building layers…</div>
+  </div>
+
+  <div class="controls">
+    <div class="slider">
+      <div class="row"><span>Loosest block-in</span><span>Most detail</span></div>
+      <input id="detail" type="range" min="1" max="20" value="6">
+      <div class="hint" id="detailHint">Detail 6 / 20</div>
+    </div>
+    <button id="save" class="act" disabled>Save this view</button>
+  </div>
+
+  <div class="foot" id="foot">Normal shows the untouched original. Simplified is the block-in — slide to change how loose it is.</div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var MAXPROC=480, FINE_K=32;
+  var fileInput=document.getElementById('file'), drop=document.getElementById('drop');
+  var cv=document.getElementById('cv'), ctx=cv.getContext('2d',{willReadFrequently:true});
+  var empty=document.getElementById('empty'), busy=document.getElementById('busy');
+  var saveBtn=document.getElementById('save'), detail=document.getElementById('detail');
+  var detailHint=document.getElementById('detailHint'), foot=document.getElementById('foot'), tabs=document.getElementById('tabs');
+  var srcImg=null, procW=0, procH=0, currentTab='simplified', cache=null;
+  var STORE_KEY='painting-studio-last-image';
+
+  drop.addEventListener('click',function(){fileInput.click();});
+  fileInput.addEventListener('change',function(e){if(e.target.files&&e.target.files[0])loadFile(e.target.files[0]);});
+  ['dragenter','dragover'].forEach(function(ev){drop.addEventListener(ev,function(e){e.preventDefault();drop.classList.add('drag');});});
+  ['dragleave','drop'].forEach(function(ev){drop.addEventListener(ev,function(e){e.preventDefault();drop.classList.remove('drag');});});
+  drop.addEventListener('drop',function(e){var f=e.dataTransfer.files&&e.dataTransfer.files[0];if(f)loadFile(f);});
+  function loadFile(file){var r=new FileReader();r.onload=function(){setImageFromDataURL(r.result,true);};r.readAsDataURL(file);}
+
+  function setImageFromDataURL(dataURL,remember){
+    var img=new Image();
+    img.onload=function(){
+      var scale=Math.min(1,MAXPROC/Math.max(img.width,img.height));
+      procW=Math.max(1,Math.round(img.width*scale)); procH=Math.max(1,Math.round(img.height*scale));
+      cv.width=procW;cv.height=procH;ctx.drawImage(img,0,0,procW,procH);
+      srcImg=ctx.getImageData(0,0,procW,procH);
+      empty.style.display='none';cv.style.display='block';saveBtn.disabled=false;cache=null;
+      if(remember){try{localStorage.setItem(STORE_KEY,dataURL);}catch(e){}}
+      showBusy(true);
+      setTimeout(function(){ render(); showBusy(false); },12);
+    };
+    img.src=dataURL;
+  }
+
+  tabs.addEventListener('click',function(e){
+    var t=e.target.closest('.tab');if(!t)return;
+    [].forEach.call(tabs.children,function(c){c.classList.remove('active');});
+    t.classList.add('active');currentTab=t.getAttribute('data-tab');render();
+  });
+  var debounce;
+  detail.addEventListener('input',function(){
+    detailHint.textContent='Detail '+detail.value+' / 20';
+    clearTimeout(debounce);debounce=setTimeout(render,70);
+  });
+  saveBtn.addEventListener('click',function(){
+    var a=document.createElement('a');a.download='painting-studio-'+currentTab+'.png';a.href=cv.toDataURL('image/png');a.click();
+  });
+
+  function showBusy(on){busy.classList.toggle('on',on);}
+  function footNote(t){foot.textContent=t;}
+  function putBack(d){ctx.putImageData(d,0,0);}
+  function newData(){return ctx.createImageData(procW,procH);}
+  function map(v,a,b,c,d){return c+(v-a)*(d-c)/(b-a);}
+
+  function render(){
+    if(!srcImg)return;
+    var d=parseInt(detail.value,10);
+    if(currentTab==='normal'){putBack(srcImg);footNote('The untouched reference.');return;}
+    showBusy(true);
+    setTimeout(function(){ renderSimplified(d); showBusy(false); },10);
+  }
+
+  function precompute(){
+    var w=procW,h=procH,n=w*h,s=srcImg.data;
+    var base=medianFilter(s,w,h,2);
+    var km=kmeansFull(base,w,h,FINE_K);
+    var lab=modeFilterLabels(km.labels,w,h,2,FINE_K);
+    lab=modeFilterLabels(lab,w,h,2,FINE_K);
+    var cc=connectedComponents(lab,w,h);
+    var regionOf=cc.regionOf, R=cc.R;
+    var cnt=new Float64Array(R), sr=new Float64Array(R), sg=new Float64Array(R), sb=new Float64Array(R);
+    for(var p=0;p<n;p++){var r=regionOf[p],i=p*4;cnt[r]++;sr[r]+=s[i];sg[r]+=s[i+1];sb[r]+=s[i+2];}
+    var merges=agglomerate(regionOf,R,w,h,cnt,sr,sg,sb);
+    cache={regionOf:regionOf,R:R,cnt:cnt,sr:sr,sg:sg,sb:sb,merges:merges};
+  }
+
+  function renderSimplified(d){
+    if(!cache)precompute();
+    var R=cache.R, n=procW*procH, merges=cache.merges;
+    var maxT=Math.min(R,280);
+    var target=Math.round(map(d,1,20,5,maxT)); target=Math.max(2,Math.min(R,target));
+    var par=new Int32Array(R); for(var i=0;i<R;i++)par[i]=i;
+    function find(x){while(par[x]!==x){par[x]=par[par[x]];x=par[x];}return x;}
+    var nM=R-target;
+    for(var m=0;m<nM;m++){var a=find(merges[m*2]),b=find(merges[m*2+1]);if(a!==b)par[b]=a;}
+    var rc=new Float64Array(R), rr=new Float64Array(R), rg=new Float64Array(R), rb=new Float64Array(R);
+    for(i=0;i<R;i++){var root=find(i);rc[root]+=cache.cnt[i];rr[root]+=cache.sr[i];rg[root]+=cache.sg[i];rb[root]+=cache.sb[i];}
+    var regionOf=cache.regionOf, out=newData(), o=out.data, groups=0, seen=new Uint8Array(R);
+    for(var pp=0;pp<n;pp++){
+      var rt=find(regionOf[pp]); if(!seen[rt]){seen[rt]=1;groups++;}
+      var c=rc[rt], j=pp*4;
+      o[j]=rr[rt]/c; o[j+1]=rg[rt]/c; o[j+2]=rb[rt]/c; o[j+3]=255;
+    }
+    putBack(out);
+    footNote('Block-in — '+groups+' colour masses, each its own true average. Raise detail to split masses into truer sub-colours.');
+  }
+
+  function connectedComponents(lab,w,h){
+    var n=w*h, regionOf=new Int32Array(n); for(var q=0;q<n;q++)regionOf[q]=-1;
+    var stack=new Int32Array(n), R=0;
+    for(var start=0;start<n;start++){
+      if(regionOf[start]!==-1)continue;
+      var lv=lab[start], sp=0; stack[sp++]=start; regionOf[start]=R;
+      while(sp>0){
+        var idx=stack[--sp], x=idx%w, y=(idx/w)|0;
+        if(x>0){var nb=idx-1;if(regionOf[nb]===-1&&lab[nb]===lv){regionOf[nb]=R;stack[sp++]=nb;}}
+        if(x<w-1){nb=idx+1;if(regionOf[nb]===-1&&lab[nb]===lv){regionOf[nb]=R;stack[sp++]=nb;}}
+        if(y>0){nb=idx-w;if(regionOf[nb]===-1&&lab[nb]===lv){regionOf[nb]=R;stack[sp++]=nb;}}
+        if(y<h-1){nb=idx+w;if(regionOf[nb]===-1&&lab[nb]===lv){regionOf[nb]=R;stack[sp++]=nb;}}
+      }
+      R++;
+    }
+    return {regionOf:regionOf,R:R};
+  }
+
+  function agglomerate(regionOf,R,w,h,cnt0,sr0,sg0,sb0){
+    var cnt=Float64Array.from(cnt0), sr=Float64Array.from(sr0), sg=Float64Array.from(sg0), sb=Float64Array.from(sb0);
+    var adj=new Array(R); for(var i=0;i<R;i++)adj[i]=new Map();
+    function addEdge(a,b){if(a===b)return;adj[a].set(b,(adj[a].get(b)||0)+1);adj[b].set(a,(adj[b].get(a)||0)+1);}
+    var x,y,idx,a,b;
+    for(y=0;y<h;y++)for(x=0;x<w-1;x++){idx=y*w+x;a=regionOf[idx];b=regionOf[idx+1];if(a!==b)addEdge(a,b);}
+    for(y=0;y<h-1;y++)for(x=0;x<w;x++){idx=y*w+x;a=regionOf[idx];b=regionOf[idx+w];if(a!==b)addEdge(a,b);}
+    var parent=new Int32Array(R), ver=new Int32Array(R); for(i=0;i<R;i++)parent[i]=i;
+    function find(z){while(parent[z]!==z){parent[z]=parent[parent[z]];z=parent[z];}return z;}
+    function cost(u,v){
+      var mu_r=sr[u]/cnt[u],mu_g=sg[u]/cnt[u],mu_b=sb[u]/cnt[u];
+      var mv_r=sr[v]/cnt[v],mv_g=sg[v]/cnt[v],mv_b=sb[v]/cnt[v];
+      var dr=mu_r-mv_r,dg=mu_g-mv_g,db=mu_b-mv_b;
+      var wt=(cnt[u]*cnt[v])/(cnt[u]+cnt[v]);
+      return wt*(dr*dr+dg*dg+db*db);
+    }
+    var heap=new MinHeap();
+    for(a=0;a<R;a++)adj[a].forEach(function(_,bb){if(a<bb)heap.push([cost(a,bb),a,bb,ver[a],ver[bb]]);});
+    var merges=[], ncur=R;
+    while(ncur>1 && heap.size()>0){
+      var e=heap.pop(), ca=e[1], cb=e[2], va=e[3], vb=e[4];
+      if(find(ca)!==ca||find(cb)!==cb||ver[ca]!==va||ver[cb]!==vb||!adj[ca].has(cb))continue;
+      var surv=cnt[ca]>=cnt[cb]?ca:cb, oth=surv===ca?cb:ca;
+      sr[surv]+=sr[oth];sg[surv]+=sg[oth];sb[surv]+=sb[oth];cnt[surv]+=cnt[oth];
+      parent[oth]=surv;
+      var neigh=adj[oth];
+      neigh.forEach(function(cE,xx){
+        if(xx===surv)return;
+        adj[surv].set(xx,(adj[surv].get(xx)||0)+cE);
+        adj[xx].set(surv,(adj[xx].get(surv)||0)+(adj[xx].get(oth)||0));
+        adj[xx].delete(oth);
+      });
+      adj[oth]=new Map(); adj[surv].delete(oth); ver[surv]++;
+      adj[surv].forEach(function(_,xx){heap.push([cost(surv,xx),surv,xx,ver[surv],ver[xx]]);});
+      merges.push(surv,oth); ncur--;
+    }
+    return merges;
+  }
+
+  function MinHeap(){this.a=[];}
+  MinHeap.prototype.size=function(){return this.a.length;};
+  MinHeap.prototype.push=function(v){var a=this.a;a.push(v);var i=a.length-1;
+    while(i>0){var p=(i-1)>>1;if(a[p][0]<=a[i][0])break;var t=a[p];a[p]=a[i];a[i]=t;i=p;}};
+  MinHeap.prototype.pop=function(){var a=this.a,top=a[0],last=a.pop();
+    if(a.length){a[0]=last;var i=0,n=a.length;
+      for(;;){var l=2*i+1,r=l+1,s=i;
+        if(l<n&&a[l][0]<a[s][0])s=l; if(r<n&&a[r][0]<a[s][0])s=r; if(s===i)break;
+        var t=a[s];a[s]=a[i];a[i]=t;i=s;}}
+    return top;};
+
+  function medianFilter(data,w,h,r){
+    var out=new Uint8ClampedArray(data.length),win=[];
+    for(var y=0;y<h;y++)for(var x=0;x<w;x++){
+      for(var ch=0;ch<3;ch++){win.length=0;
+        for(var dy=-r;dy<=r;dy++){var yy=y+dy;if(yy<0)yy=0;else if(yy>=h)yy=h-1;
+          for(var dx=-r;dx<=r;dx++){var xx=x+dx;if(xx<0)xx=0;else if(xx>=w)xx=w-1;win.push(data[(yy*w+xx)*4+ch]);}}
+        win.sort(function(a,b){return a-b;});out[(y*w+x)*4+ch]=win[win.length>>1];}
+      out[(y*w+x)*4+3]=255;}
+    return out;
+  }
+  function kmeansFull(data,w,h,k){
+    var n=w*h,sampleN=Math.min(n,9000),stride=Math.max(1,Math.floor(n/sampleN)),samples=[],p,i;
+    for(p=0;p<n;p+=stride){i=p*4;samples.push([data[i],data[i+1],data[i+2]]);}
+    var cents=[];for(var c=0;c<k;c++){var s=samples[Math.floor(c*(samples.length-1)/(k-1||1))]||samples[0];cents.push([s[0],s[1],s[2]]);}
+    for(var it=0;it<10;it++){var sums=[];for(var m=0;m<k;m++)sums.push([0,0,0,0]);
+      for(var q=0;q<samples.length;q++){var sp=samples[q],best=0,bd=1e12;
+        for(var cc=0;cc<k;cc++){var cn=cents[cc],dr=sp[0]-cn[0],dg=sp[1]-cn[1],db=sp[2]-cn[2],dist=dr*dr+dg*dg+db*db;if(dist<bd){bd=dist;best=cc;}}
+        var su=sums[best];su[0]+=sp[0];su[1]+=sp[1];su[2]+=sp[2];su[3]++;}
+      for(var u=0;u<k;u++)if(sums[u][3]>0){cents[u][0]=sums[u][0]/sums[u][3];cents[u][1]=sums[u][1]/sums[u][3];cents[u][2]=sums[u][2]/sums[u][3];}}
+    var labels=new Int32Array(n),flatC=new Array(k*3);
+    for(var z=0;z<k;z++){flatC[z*3]=cents[z][0];flatC[z*3+1]=cents[z][1];flatC[z*3+2]=cents[z][2];}
+    for(var pp=0;pp<n;pp++){var ii=pp*4,r0=data[ii],g0=data[ii+1],b0=data[ii+2],bb=0,bdd=1e12;
+      for(var e=0;e<k;e++){var dr2=r0-flatC[e*3],dg2=g0-flatC[e*3+1],db2=b0-flatC[e*3+2],dd=dr2*dr2+dg2*dg2+db2*db2;if(dd<bdd){bdd=dd;bb=e;}}
+      labels[pp]=bb;}
+    return {labels:labels};
+  }
+  function modeFilterLabels(labels,w,h,r,nLabels){
+    var out=new Int32Array(labels.length),count=new Int32Array(nLabels);
+    for(var y=0;y<h;y++)for(var x=0;x<w;x++){
+      for(var z=0;z<nLabels;z++)count[z]=0;
+      var best=labels[y*w+x],bestC=-1;
+      for(var dy=-r;dy<=r;dy++){var yy=y+dy;if(yy<0)yy=0;else if(yy>=h)yy=h-1;
+        for(var dx=-r;dx<=r;dx++){var xx=x+dx;if(xx<0)xx=0;else if(xx>=w)xx=w-1;var lb=labels[yy*w+xx];count[lb]++;if(count[lb]>bestC){bestC=count[lb];best=lb;}}}
+      out[y*w+x]=best;}
+    return out;
+  }
+
+  try{var saved=localStorage.getItem(STORE_KEY);if(saved)setImageFromDataURL(saved,false);}catch(e){}
+})();
+</script>
+</body>
+</html>
