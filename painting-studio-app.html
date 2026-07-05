@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Painting Studio — Outline · Block-in · Finished</title>
+<style>
+  :root{--bg:#14121a;--panel:#1e1b26;--panel2:#272231;--ink:#f2eef8;
+    --muted:#a99fc0;--line:#352f42;--accent:#c47bff;--accent2:#7bd8ff;--good:#7be0a3;}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:radial-gradient(1200px 800px at 70% -10%, #241d33 0%, var(--bg) 60%);
+    color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1040px;margin:0 auto;padding:22px 18px 80px}
+  header h1{font-size:22px;margin:0 0 2px;letter-spacing:.2px}
+  header p{margin:0 0 16px;color:var(--muted);font-size:13.5px}
+  .badge{display:inline-block;padding:2px 8px;border:1px solid var(--line);border-radius:999px;font-size:11.5px;color:var(--muted);margin-left:6px}
+
+  #drop{padding:26px;text-align:center;border:2px dashed var(--line);border-radius:16px;cursor:pointer;transition:.15s;background:var(--panel)}
+  #drop.drag{border-color:var(--accent);background:var(--panel2)}
+  #drop b{color:var(--accent)} #drop small{color:var(--muted)}
+
+  .status{margin:12px 0;font-size:13px;color:var(--muted);min-height:20px}
+  .status .ok{color:var(--good)} .status .warn{color:#ffb27b}
+  .dotpulse{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent2);margin-right:6px;animation:p 1s infinite}
+  @keyframes p{0%,100%{opacity:.3}50%{opacity:1}}
+
+  .bopts{display:none;gap:8px;margin:2px 0 14px;align-items:center;flex-wrap:wrap}
+  .bopts .lbl2{font-size:12px;color:var(--muted);width:100%}
+  .bopt{border:2px solid var(--line);border-radius:10px;padding:2px;cursor:pointer;background:var(--panel);position:relative}
+  .bopt img{height:74px;border-radius:7px;display:block}
+  .bopt .tag{position:absolute;bottom:3px;left:3px;right:3px;font-size:10px;background:#000a;color:#fff;border-radius:5px;padding:1px 0;text-align:center}
+  .bopt.sel{border-color:var(--accent)}
+  .pbtn{padding:6px 12px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);cursor:pointer;font-weight:600;font-size:12.5px}
+  .pbtn:hover{border-color:var(--accent2);color:var(--accent2)}
+  .pbtn.on{background:var(--accent);color:#1b0f28;border-color:var(--accent)}
+  #bcustom{width:60px;background:var(--panel);border:1px solid var(--line);border-radius:8px;color:var(--ink);padding:6px 8px;font-size:12.5px}
+  #layerpanel{margin:10px 0 0;flex-direction:column;gap:8px}
+  .layerrow{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 12px}
+  .layerrow .lname{width:92px;font-weight:600;font-size:13px}
+  .layerrow input[type=range]{flex:1;accent-color:var(--accent)}
+  .layerrow .mv{background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:7px;cursor:pointer;width:30px;height:28px;font-size:13px}
+  .layerrow .mv:disabled{opacity:.3;cursor:default}
+  .stagecards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:16px 0}
+  .card2{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px;text-align:center;position:relative;min-height:130px;display:flex;flex-direction:column;gap:6px;align-items:center;justify-content:center}
+  .card2 .num{width:22px;height:22px;border-radius:50%;background:var(--panel2);border:1px solid var(--line);color:var(--accent);font-weight:700;display:flex;align-items:center;justify-content:center;font-size:12px}
+  .card2 .lbl{font-weight:600;font-size:13px}
+  .card2 img{max-width:100%;max-height:96px;border-radius:8px;object-fit:contain}
+  .card2 .replace{font-size:11px;color:var(--muted);text-decoration:underline;cursor:pointer}
+  .card2 .spin{font-size:12px;color:var(--accent2)}
+
+  .modebar{display:flex;gap:8px;align-items:center;margin:6px 0 12px;flex-wrap:wrap}
+  .seg{display:inline-flex;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:3px}
+  .seg button{border:0;background:transparent;color:var(--muted);padding:7px 14px;border-radius:999px;cursor:pointer;font-weight:600;font-size:13px}
+  .seg button.on{background:var(--accent);color:#1b0f28}
+  .modehint{font-size:12px;color:var(--muted)}
+
+  .viewer{position:relative;display:flex;justify-content:center;align-items:center;min-height:300px;
+    background:linear-gradient(45deg,#00000022 25%,transparent 25%,transparent 75%,#00000022 75%) 0 0/22px 22px,
+      linear-gradient(45deg,#00000022 25%,transparent 25%,transparent 75%,#00000022 75%) 11px 11px/22px 22px,var(--panel2);
+    border:1px solid var(--line);border-radius:14px;overflow:hidden;padding:10px}
+  .frame{position:relative;width:100%;max-width:900px;aspect-ratio:4/3;margin:0 auto}
+  .frame img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;opacity:0;transition:opacity .5s ease}
+  .frame img.show{opacity:1}
+  .viewer .empty{color:var(--muted);font-size:14px;text-align:center;padding:30px}
+
+  .steps{display:flex;gap:8px;justify-content:center;margin:14px 0 4px;flex-wrap:wrap}
+  .step{padding:8px 16px;border-radius:999px;border:1px solid var(--line);background:var(--panel);color:var(--muted);cursor:pointer;font-weight:600;font-size:13px;display:flex;align-items:center;gap:7px}
+  .step .dot{width:18px;height:18px;border-radius:50%;background:var(--panel2);border:1px solid var(--line);font-size:11px;display:flex;align-items:center;justify-content:center;color:var(--accent)}
+  .step.active{background:var(--accent);border-color:var(--accent);color:#1b0f28}
+  .step.active .dot{background:#1b0f28;color:var(--accent);border-color:#1b0f28}
+  .step.empty{opacity:.4}
+  .navrow{display:flex;justify-content:space-between;gap:10px;margin-top:6px}
+  button.act{padding:10px 16px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);cursor:pointer;font-weight:600}
+  button.act:hover:not(:disabled){border-color:var(--accent2);color:var(--accent2)}
+  button.act:disabled{opacity:.35;cursor:not-allowed}
+
+  .notes{margin-top:18px}
+  .notes label{font-size:13px;color:var(--muted);display:block;margin-bottom:6px}
+  .notes label b{color:var(--ink)}
+  textarea{width:100%;min-height:88px;resize:vertical;background:var(--panel);border:1px solid var(--line);border-radius:12px;color:var(--ink);padding:12px 14px;font:14px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+  textarea:focus{outline:none;border-color:var(--accent)}
+  .savebar{margin-top:14px;display:flex;gap:10px;flex-wrap:wrap}
+  .foot{margin-top:16px;color:var(--muted);font-size:12px}
+</style>
+</head>
+<body>
+<!-- onnxruntime-web for the in-browser line-art model -->
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.10.0/dist/ort.js"></script>
+<div class="wrap">
+  <header>
+    <h1>Painting Studio <span class="badge">outline · block-in · finished</span></h1>
+    <p>Drop in a finished painting and it builds the whole process — line drawing, flat block-in, and a step-through of how it came together. All on your device.</p>
+  </header>
+
+  <div id="drop" class="card2" style="min-height:auto">
+    <div><b>Click to choose</b> or drag your finished painting here</div>
+    <small>Stays on your device — nothing is uploaded.</small>
+    <input id="file" type="file" accept="image/*" hidden>
+  </div>
+  <button id="lastBtn" class="pbtn" style="display:none;margin:10px 0 0">↺ Use last image</button>
+
+  <div class="status" id="status"></div>
+
+  <!-- generated stage cards -->
+  <div class="stagecards">
+    <div class="card2" data-i="0">
+      <div class="num">1</div><div class="lbl">Outline</div>
+      <div class="body"><span class="spin" style="display:none">drawing…</span></div>
+      <span class="replace">use my own</span>
+      <input type="file" accept="image/*" hidden>
+    </div>
+    <div class="card2" data-i="1">
+      <div class="num">2</div><div class="lbl">Block-in</div>
+      <div class="body"><span class="spin" style="display:none">blocking…</span></div>
+      <span class="replace">use my own</span>
+      <input type="file" accept="image/*" hidden>
+    </div>
+    <div class="card2" data-i="2">
+      <div class="num">3</div><div class="lbl">Finished</div>
+      <div class="body"></div>
+      <span class="replace">use my own</span>
+      <input type="file" accept="image/*" hidden>
+    </div>
+  </div>
+
+  <div class="bopts" id="odetail" style="display:none"><span class="lbl2">Line detail — drag left for a cleaner coloring-page outline, right for more detail:</span><input id="odrange" type="range" min="60" max="205" value="100" style="width:240px;accent-color:var(--accent)"></div>
+
+  <div class="bopts" id="bcontrols" style="display:none">
+    <span class="lbl2">Block-in colours — tap a preset or type your own (max 100):</span>
+    <button class="pbtn" data-k="10">10</button>
+    <button class="pbtn" data-k="20">20</button>
+    <button class="pbtn" data-k="30">30</button>
+    <button class="pbtn" data-k="40">40</button>
+    <button class="pbtn" data-k="50">50</button>
+    <input id="bcustom" type="number" min="4" max="100" placeholder="#">
+    <button class="pbtn" id="bcustombtn">Build</button>
+  </div>
+
+  <div class="bopts" id="bopts"></div>
+
+  <div class="modebar">
+    <div class="seg" id="mode">
+      <button data-m="step" class="on">Step through</button>
+      <button data-m="layers">Layers</button>
+    </div>
+    <span class="modehint" id="modehint">Step through — one stage at a time.</span>
+    <button id="grayBtn" class="pbtn" style="margin-left:auto">Grayscale: off</button>
+  </div>
+
+  <div class="bopts" id="layerpanel" style="display:none"></div>
+
+  <div class="viewer">
+    <div class="empty" id="empty">Add a finished painting above to begin.</div>
+    <div class="frame" id="frame" style="display:none">
+      <img id="img0" alt="Outline"><img id="img1" alt="Block-in"><img id="img2" alt="Finished">
+    </div>
+  </div>
+
+  <div class="steps" id="steps">
+    <div class="step" data-i="0"><span class="dot">1</span> Outline</div>
+    <div class="step" data-i="1"><span class="dot">2</span> Block-in</div>
+    <div class="step" data-i="2"><span class="dot">3</span> Finished</div>
+  </div>
+  <div class="navrow">
+    <button class="act" id="prev">‹ Back</button>
+    <button class="act" id="next">Next ›</button>
+  </div>
+
+  <div class="notes">
+    <label>Notes for <b id="notesFor">this stage</b> <span style="color:var(--muted)">— your mediums, order, tips</span></label>
+    <textarea id="notes" placeholder="e.g. Black gesso over a ready-made panel, then a loose watercolour wash…"></textarea>
+  </div>
+
+  <div class="savebar">
+    <button class="act" id="save">Save this view (PNG)</button>
+  </div>
+
+  <div class="foot">The outline uses a free open-source line-art model that runs right in your browser — it never sees who's in the picture, so it works on anything. First use downloads a small model file (~a few MB).</div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var LABELS=["Outline","Block-in","Finished"];
+  var images=[null,null,null];      // dataURLs shown in walkthrough
+  var notes=["","",""];
+  var current=2, mode="step";
+  var NKEY="painting-studio-app-notes";
+  var MAXPROC=1200, OUTLINE_MAX=1100, BLOCKIN_COLORS=36;
+
+  var statusEl=document.getElementById('status');
+  var drop=document.getElementById('drop'), fileInput=document.getElementById('file');
+  var cards=[].slice.call(document.querySelectorAll('.card2[data-i]'));
+  var imgEls=[document.getElementById('img0'),document.getElementById('img1'),document.getElementById('img2')];
+  var frame=document.getElementById('frame'), empty=document.getElementById('empty');
+  var stepEls=[].slice.call(document.querySelectorAll('.steps .step'));
+  var prev=document.getElementById('prev'), next=document.getElementById('next');
+  var notesEl=document.getElementById('notes'), notesFor=document.getElementById('notesFor');
+  var modeSeg=document.getElementById('mode'), modehint=document.getElementById('modehint');
+  var saveBtn=document.getElementById('save');
+  var bopts=document.getElementById('bopts');
+  var odetailWrap=document.getElementById('odetail'), odrange=document.getElementById('odrange');
+  var rawOutline=null, outlineDetail=100;
+  var bcontrols=document.getElementById('bcontrols'), bcustom=document.getElementById('bcustom'), bcustombtn=document.getElementById('bcustombtn');
+  var layerpanel=document.getElementById('layerpanel');
+  var builtOptions={}, lastFinishedURL=null;
+  var layerOrder=[0,1,2], layerOpacity=[1,1,1];
+  var LASTKEY='painting-studio-app-lastimg', lastBtn=document.getElementById('lastBtn');
+
+  try{var s=localStorage.getItem(NKEY);if(s){var a=JSON.parse(s);if(Array.isArray(a))notes=a.slice(0,3);}}catch(e){}
+
+  // ---------- ONNX line-art model ----------
+  var onnxSession=null, modelState="loading";
+  function setStatus(html){statusEl.innerHTML=html;}
+  (async function(){
+    setStatus('<span class="dotpulse"></span>Warming up the outline model…');
+    try{
+      if(typeof ort==='undefined') throw new Error("ort missing");
+      ort.env.wasm.proxy=true;
+      onnxSession=await ort.InferenceSession.create('https://huggingface.co/rocca/informative-drawings-line-art-onnx/resolve/main/model.onnx',{executionProviders:["wasm"]});
+      modelState="ready";
+      setStatus('<span class="ok">Outline model ready.</span> Drop a finished painting to begin.');
+    }catch(err){
+      modelState="failed";
+      setStatus('<span class="warn">Couldn’t load the outline model</span> (offline or blocked). You can still drop a painting — block-in works, and you can add your own outline with “use my own”.');
+      console.warn(err);
+    }
+  })();
+
+  function loadImage(src){return new Promise(function(res,rej){var im=new Image();im.onload=function(){res(im);};im.onerror=rej;im.src=src;});}
+
+  async function makeOutline(srcDataURL){
+    if(modelState!=="ready"||!onnxSession) return null;
+    var img=await loadImage(srcDataURL);
+    var scale=Math.min(1,OUTLINE_MAX/Math.max(img.width,img.height));
+    var w=Math.max(1,Math.round(img.width*scale)), h=Math.max(1,Math.round(img.height*scale));
+    var c=document.createElement('canvas');c.width=w;c.height=h;
+    var ctx=c.getContext('2d');ctx.drawImage(img,0,0,w,h);
+    var d=ctx.getImageData(0,0,w,h).data, n=w*h;
+    var arr=new Float32Array(n*3);
+    for(var i=0;i<n;i++){arr[i]=d[i*4]/255;arr[n+i]=d[i*4+1]/255;arr[2*n+i]=d[i*4+2]/255;}
+    var feeds={'input':new ort.Tensor('float32',arr,[1,3,h,w])};
+    var results=await onnxSession.run(feeds);
+    var out=results['output'], ow=out.dims[3], oh=out.dims[2], od=out.data;
+    var gray=new Uint8ClampedArray(ow*oh);
+    for(var k=0;k<ow*oh;k++){var v=od[k];v=v<0?0:v>1?1:v;gray[k]=v*255;}
+    rawOutline={w:ow,h:oh,gray:gray};
+    applyOutlineThreshold();
+    odetailWrap.style.display='flex';
+    return true;
+  }
+
+  // turn the model's soft sketch into a clean coloring-page outline (threshold + slight bolden)
+  function applyOutlineThreshold(){
+    if(!rawOutline) return;
+    var w=rawOutline.w, h=rawOutline.h, g=rawOutline.gray, T=outlineDetail;
+    var oc=document.createElement('canvas');oc.width=w;oc.height=h;var ctx=oc.getContext('2d');
+    var id=ctx.createImageData(w,h),p=id.data;
+    for(var i=0;i<w*h;i++){ var vv=g[i]<T?0:255; p[i*4]=vv;p[i*4+1]=vv;p[i*4+2]=vv;p[i*4+3]=255; }
+    ctx.putImageData(id,0,0);
+    images[0]=oc.toDataURL('image/png'); paintCard(0);
+  }
+
+  // ---------- Block-in engine (flat colour) ----------
+  function makeBlockin(srcDataURL,K){
+    K=K||BLOCKIN_COLORS;
+    return loadImage(srcDataURL).then(function(img){
+      var scale=Math.min(1,MAXPROC/Math.max(img.width,img.height));
+      var w=Math.max(1,Math.round(img.width*scale)), h=Math.max(1,Math.round(img.height*scale));
+      var c=document.createElement('canvas');c.width=w;c.height=h;var ctx=c.getContext('2d',{willReadFrequently:true});
+      ctx.drawImage(img,0,0,w,h);
+      var s=ctx.getImageData(0,0,w,h).data;
+      var vivid=saturate(s,1.2);
+      var base=medianFilter(vivid,w,h,1);
+      base=boxBlur(base,w,h,2);        // flatten brush/canvas texture so blocks come out clean
+      var q=quantizeImage(base,w,h,K);
+      var cleaned=medianFilter(q,w,h,1);
+      var oc=document.createElement('canvas');oc.width=w;oc.height=h;var octx=oc.getContext('2d');
+      var id=octx.createImageData(w,h);id.data.set(cleaned);octx.putImageData(id,0,0);
+      return oc.toDataURL('image/png');
+    });
+  }
+
+  // generate a few block-in options at different colour counts and let the user pick
+  function makeOptionThumb(K){
+    var o=builtOptions[K];
+    var d=document.createElement('div'); d.className='bopt'; d.dataset.k=K;
+    var im=document.createElement('img'); im.src=o.url; d.appendChild(im);
+    var tag=document.createElement('div'); tag.className='tag'; tag.textContent=K+' colours'; d.appendChild(tag);
+    d.addEventListener('click',function(){ selectOption(K); });
+    return d;
+  }
+  function selectOption(K){
+    var o=builtOptions[K]; if(!o) return;
+    images[1]=o.url; paintCard(1);
+    [].forEach.call(bopts.querySelectorAll('.bopt'),function(x){x.classList.remove('sel');});
+    if(o.el) o.el.classList.add('sel'); render();
+  }
+  async function ensureOption(K){
+    K=Math.max(4,Math.min(100,Math.round(K||0)));
+    if(!K||!lastFinishedURL) return;
+    if(builtOptions[K]){ selectOption(K); return; }
+    spin(1,true);
+    var url=await makeBlockin(lastFinishedURL,K);
+    spin(1,false);
+    builtOptions[K]={url:url,el:null};
+    var d=makeOptionThumb(K); builtOptions[K].el=d;
+    var ref=null;
+    [].some.call(bopts.querySelectorAll('.bopt'),function(x){ if(+x.dataset.k>K){ ref=x; return true; } return false; });
+    bopts.insertBefore(d, ref);   // keep thumbnails sorted lowest→highest
+    selectOption(K);
+  }
+  async function buildBlockinOptions(durl){
+    lastFinishedURL=durl; builtOptions={};
+    [].forEach.call(bopts.querySelectorAll('.bopt'),function(e){e.remove();});
+    bcontrols.style.display='flex'; bopts.style.display='flex';
+    await ensureOption(30);
+  }
+  function saturate(data,f){
+    var out=new Uint8ClampedArray(data.length);
+    for(var i=0;i<data.length;i+=4){var r=data[i],g=data[i+1],b=data[i+2];var l=0.299*r+0.587*g+0.114*b;
+      out[i]=l+(r-l)*f;out[i+1]=l+(g-l)*f;out[i+2]=l+(b-l)*f;out[i+3]=255;}
+    return out;
+  }
+  function boxBlur(data,w,h,r){
+    var mid=new Float32Array(w*h*3);
+    for(var y=0;y<h;y++)for(var x=0;x<w;x++){
+      var a=0,b=0,c=0,n=0;
+      for(var dx=-r;dx<=r;dx++){var xx=x+dx;if(xx<0)xx=0;else if(xx>=w)xx=w-1;var i=(y*w+xx)*4;a+=data[i];b+=data[i+1];c+=data[i+2];n++;}
+      var m=(y*w+x)*3;mid[m]=a/n;mid[m+1]=b/n;mid[m+2]=c/n;
+    }
+    var out=new Uint8ClampedArray(w*h*4);
+    for(var y2=0;y2<h;y2++)for(var x2=0;x2<w;x2++){
+      var a2=0,b2=0,c2=0,n2=0;
+      for(var dy=-r;dy<=r;dy++){var yy=y2+dy;if(yy<0)yy=0;else if(yy>=h)yy=h-1;var mm=(yy*w+x2)*3;a2+=mid[mm];b2+=mid[mm+1];c2+=mid[mm+2];n2++;}
+      var o=(y2*w+x2)*4;out[o]=a2/n2;out[o+1]=b2/n2;out[o+2]=c2/n2;out[o+3]=255;
+    }
+    return out;
+  }
+  function medianFilter(data,w,h,r){
+    var out=new Uint8ClampedArray(data.length),win=[];
+    for(var y=0;y<h;y++)for(var x=0;x<w;x++){
+      for(var ch=0;ch<3;ch++){win.length=0;
+        for(var dy=-r;dy<=r;dy++){var yy=y+dy;if(yy<0)yy=0;else if(yy>=h)yy=h-1;
+          for(var dx=-r;dx<=r;dx++){var xx=x+dx;if(xx<0)xx=0;else if(xx>=w)xx=w-1;win.push(data[(yy*w+xx)*4+ch]);}}
+        win.sort(function(a,b){return a-b;});out[(y*w+x)*4+ch]=win[win.length>>1];}
+      out[(y*w+x)*4+3]=255;}
+    return out;
+  }
+  function quantizeImage(data,w,h,K){
+    var n=w*h,sampleN=Math.min(n,12000),stride=Math.max(1,Math.floor(n/sampleN)),samples=[],p,i;
+    for(p=0;p<n;p+=stride){i=p*4;samples.push([data[i],data[i+1],data[i+2]]);}
+    var cents=[];for(var c=0;c<K;c++){var sp0=samples[Math.floor(c*(samples.length-1)/(K-1||1))]||samples[0];cents.push([sp0[0],sp0[1],sp0[2]]);}
+    for(var it=0;it<12;it++){var sums=[];for(var m=0;m<K;m++)sums.push([0,0,0,0]);
+      for(var q=0;q<samples.length;q++){var sp=samples[q],best=0,bd=1e12;
+        for(var cc=0;cc<K;cc++){var cn=cents[cc],dr=sp[0]-cn[0],dg=sp[1]-cn[1],db=sp[2]-cn[2],dist=dr*dr+dg*dg+db*db;if(dist<bd){bd=dist;best=cc;}}
+        var su=sums[best];su[0]+=sp[0];su[1]+=sp[1];su[2]+=sp[2];su[3]++;}
+      for(var u=0;u<K;u++)if(sums[u][3]>0){cents[u][0]=sums[u][0]/sums[u][3];cents[u][1]=sums[u][1]/sums[u][3];cents[u][2]=sums[u][2]/sums[u][3];}}
+    var flatC=new Float64Array(K*3);
+    for(var z=0;z<K;z++){flatC[z*3]=cents[z][0];flatC[z*3+1]=cents[z][1];flatC[z*3+2]=cents[z][2];}
+    var out=new Uint8ClampedArray(n*4);
+    for(var pp=0;pp<n;pp++){var ii=pp*4,r0=data[ii],g0=data[ii+1],b0=data[ii+2],bb=0,bdd=1e12;
+      for(var e=0;e<K;e++){var dr2=r0-flatC[e*3],dg2=g0-flatC[e*3+1],db2=b0-flatC[e*3+2],dd=dr2*dr2+dg2*dg2+db2*db2;if(dd<bdd){bdd=dd;bb=e;}}
+      out[ii]=flatC[bb*3];out[ii+1]=flatC[bb*3+1];out[ii+2]=flatC[bb*3+2];out[ii+3]=255;}
+    return out;
+  }
+
+  // ---------- main flow ----------
+  drop.addEventListener('click',function(){fileInput.click();});
+  fileInput.addEventListener('change',function(e){if(e.target.files&&e.target.files[0])onFinished(e.target.files[0]);});
+  ['dragenter','dragover'].forEach(function(ev){drop.addEventListener(ev,function(e){e.preventDefault();drop.classList.add('drag');});});
+  ['dragleave','drop'].forEach(function(ev){drop.addEventListener(ev,function(e){e.preventDefault();drop.classList.remove('drag');});});
+  drop.addEventListener('drop',function(e){var f=e.dataTransfer.files&&e.dataTransfer.files[0];if(f)onFinished(f);});
+  try{ if(localStorage.getItem(LASTKEY)) lastBtn.style.display='inline-block'; }catch(e){}
+  lastBtn.addEventListener('click',function(){ try{ var last=localStorage.getItem(LASTKEY); if(last) processFinished(last); }catch(e){} });
+
+  function fileToDataURL(file){return new Promise(function(res){var r=new FileReader();r.onload=function(){res(r.result);};r.readAsDataURL(file);});}
+
+  async function onFinished(file){ var durl=await fileToDataURL(file); processFinished(durl); }
+  async function storeLast(durl){
+    try{
+      var img=await loadImage(durl);
+      var s=Math.min(1,1400/Math.max(img.width,img.height));
+      var w=Math.max(1,img.width*s|0), h=Math.max(1,img.height*s|0);
+      var c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);
+      localStorage.setItem(LASTKEY, c.toDataURL('image/jpeg',0.85));
+      lastBtn.style.display='inline-block';
+    }catch(e){}
+  }
+  async function processFinished(durl){
+    images[2]=durl; paintCard(2); current=2;
+    try{ var fimg=await loadImage(durl); frame.style.aspectRatio=fimg.naturalWidth+'/'+fimg.naturalHeight; }catch(e){}
+    render();
+    storeLast(durl);
+    // block-in options
+    spin(1,true);
+    try{ await buildBlockinOptions(durl); }catch(e){ console.warn(e); }
+    spin(1,false); render();
+    // outline
+    if(modelState==="ready"){
+      spin(0,true); setStatus('<span class="dotpulse"></span>Drawing the outline (first run can take a bit)…');
+      try{ await makeOutline(durl); setStatus('<span class="ok">Done — all three stages built.</span>'); }
+      catch(e){ console.warn(e); setStatus('<span class="warn">Outline step hit an error.</span> You can add your own with “use my own”.'); }
+      spin(0,false); paintCard(0); render();
+    }else if(modelState==="failed"){
+      setStatus('<span class="warn">Outline model unavailable</span> — block-in and finished are ready; add your own outline if you like.');
+    }
+    current=firstFilled(); render();
+  }
+
+  // per-card manual replace
+  cards.forEach(function(card){
+    var i=+card.getAttribute('data-i');
+    var rep=card.querySelector('.replace'), inp=card.querySelector('input');
+    rep.addEventListener('click',function(){inp.click();});
+    inp.addEventListener('change',async function(e){if(e.target.files&&e.target.files[0]){images[i]=await fileToDataURL(e.target.files[0]);paintCard(i);render();}});
+  });
+
+  function spin(i,on){var sp=cards[i].querySelector('.spin');if(sp)sp.style.display=on?'inline':'none';}
+  function paintCard(i){
+    var body=cards[i].querySelector('.body');
+    var old=body.querySelector('img'); if(old)old.remove();
+    if(images[i]){var im=document.createElement('img');im.src=images[i];body.appendChild(im);}
+  }
+  function firstFilled(){for(var i=2;i>=0;i--){if(images[i])return i;}return 2;}
+
+  // ---------- walkthrough ----------
+  modeSeg.addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;mode=b.getAttribute('data-m');
+    [].forEach.call(modeSeg.children,function(c){c.classList.toggle('on',c===b);});
+    modehint.textContent=mode==='step'?'Step through — one stage at a time.':'Layers — see through and reorder all three.';
+    layerpanel.style.display=mode==='layers'?'flex':'none';
+    renderLayerPanel(); render();});
+  odrange.addEventListener('input',function(){outlineDetail=+odrange.value;applyOutlineThreshold();render();});
+  [].forEach.call(document.querySelectorAll('#bcontrols .pbtn[data-k]'),function(b){ b.addEventListener('click',function(){ ensureOption(+b.getAttribute('data-k')); }); });
+  bcustombtn.addEventListener('click',function(){ ensureOption(parseInt(bcustom.value,10)); });
+  var grayBtn=document.getElementById('grayBtn'), grayOn=false;
+  grayBtn.addEventListener('click',function(){ grayOn=!grayOn; frame.style.filter=grayOn?'grayscale(1)':''; grayBtn.textContent='Grayscale: '+(grayOn?'on':'off'); grayBtn.classList.toggle('on',grayOn); });
+  stepEls.forEach(function(st){st.addEventListener('click',function(){var i=+st.getAttribute('data-i');if(images[i]){current=i;render();}});});
+  prev.addEventListener('click',function(){gotoAdj(-1);});
+  next.addEventListener('click',function(){gotoAdj(1);});
+  function gotoAdj(d){var i=current;for(var k=0;k<3;k++){i+=d;if(i<0||i>2)return;if(images[i]){current=i;render();return;}}}
+  notesEl.addEventListener('input',function(){notes[current]=notesEl.value;try{localStorage.setItem(NKEY,JSON.stringify(notes));}catch(e){}});
+
+  function render(){
+    var any=images.some(function(x){return !!x;});
+    empty.style.display=any?'none':'block'; frame.style.display=any?'block':'none';
+    imgEls.forEach(function(el,i){ if(images[i]&&el.src!==images[i])el.src=images[i]; });
+    if(mode==='layers'){
+      imgEls.forEach(function(el,s){
+        if(!images[s]){ el.style.opacity=0; return; }
+        el.style.zIndex=layerOrder.indexOf(s);
+        el.style.opacity=layerOpacity[s];
+      });
+    } else {
+      imgEls.forEach(function(el,i){
+        el.style.zIndex=i;
+        el.style.opacity=(images[i]&&i===current)?1:0;
+      });
+    }
+    stepEls.forEach(function(st,i){st.classList.toggle('active',mode==='step'&&i===current);st.classList.toggle('empty',!images[i]);});
+    prev.disabled=(mode!=='step')||!hasNeighbor(-1); next.disabled=(mode!=='step')||!hasNeighbor(1);
+    notesFor.textContent=LABELS[current]; notesEl.value=notes[current]||"";
+  }
+  function renderLayerPanel(){
+    layerpanel.innerHTML='';
+    if(mode!=='layers') return;
+    var topFirst=layerOrder.slice().reverse();
+    topFirst.forEach(function(s,rowIdx){
+      var row=document.createElement('div'); row.className='layerrow';
+      var name=document.createElement('div'); name.className='lname'; name.textContent=LABELS[s]+(images[s]?'':' (none)'); row.appendChild(name);
+      var op=document.createElement('input'); op.type='range'; op.min=0; op.max=100; op.value=Math.round(layerOpacity[s]*100);
+      op.addEventListener('input',function(){ layerOpacity[s]=(+op.value)/100; render(); }); row.appendChild(op);
+      var up=document.createElement('button'); up.className='mv'; up.textContent='▲'; up.title='move up'; up.disabled=(rowIdx===0);
+      up.addEventListener('click',function(){ moveLayer(s,1); }); row.appendChild(up);
+      var dn=document.createElement('button'); dn.className='mv'; dn.textContent='▼'; dn.title='move down'; dn.disabled=(rowIdx===topFirst.length-1);
+      dn.addEventListener('click',function(){ moveLayer(s,-1); }); row.appendChild(dn);
+      layerpanel.appendChild(row);
+    });
+  }
+  function moveLayer(s,dir){
+    var pos=layerOrder.indexOf(s), np=pos+dir;
+    if(np<0||np>=layerOrder.length) return;
+    var t=layerOrder[np]; layerOrder[np]=layerOrder[pos]; layerOrder[pos]=t;
+    renderLayerPanel(); render();
+  }
+  function hasNeighbor(d){var i=current;for(var k=0;k<3;k++){i+=d;if(i<0||i>2)return false;if(images[i])return true;}return false;}
+
+  saveBtn.addEventListener('click',function(){
+    var vis=[];for(var i=0;i<3;i++){if(!images[i])continue;if(mode==='step'){if(i===current)vis.push(i);}else if(i<=current)vis.push(i);}
+    if(!vis.length)return; var loaded=[],done=0;
+    vis.forEach(function(i){var im=new Image();im.onload=function(){loaded[i]=im;if(++done===vis.length)compose();};im.src=images[i];});
+    function compose(){var base=loaded[vis[0]];var W=base.naturalWidth||900,H=base.naturalHeight||675;
+      var c=document.createElement('canvas');c.width=W;c.height=H;var ctx=c.getContext('2d');
+      vis.forEach(function(i){var im=loaded[i];var s=Math.min(W/im.naturalWidth,H/im.naturalHeight),w=im.naturalWidth*s,h=im.naturalHeight*s;ctx.drawImage(im,(W-w)/2,(H-h)/2,w,h);});
+      var a=document.createElement('a');a.download='painting-'+LABELS[current].toLowerCase()+'.png';a.href=c.toDataURL('image/png');a.click();}
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
